@@ -37,6 +37,7 @@ internal fun buildSnapshotFromOpenImage(
     rows: Int,
     viewWidthPx: Int = 0,
     viewHeightPx: Int = 0,
+    otsuThresholdBias: Float = 0f,
 ): PlayfieldSnapshot {
     val ts = image.imageInfo.timestamp
     val frame = FramePreprocessor.extractGrayscaleRoi(
@@ -49,7 +50,12 @@ internal fun buildSnapshotFromOpenImage(
     val means = runCatching { VisionGridHeuristics.cellMeans(frame, columns, rows) }.getOrElse {
         return PlayfieldSnapshot.unknownGrid(columns, rows, timestampNanos = ts)
     }
-    val (cells, confidence) = VisionGridHeuristics.classifyMeans(means, columns, rows)
+    val (cells, confidence) = VisionGridHeuristics.classifyMeans(
+        means,
+        columns,
+        rows,
+        otsuThresholdBias = otsuThresholdBias,
+    )
     return PlayfieldSnapshot(
         columns = columns,
         rows = rows,
@@ -69,6 +75,7 @@ object DualPlayfieldAnalyzer {
         nextPieceRoi: NormalizedRoi,
         viewWidthPx: Int = 0,
         viewHeightPx: Int = 0,
+        otsuThresholdBias: Float = 0f,
     ): DualPlayfieldSnapshots {
         try {
             val playfield = buildSnapshotFromOpenImage(
@@ -78,6 +85,7 @@ object DualPlayfieldAnalyzer {
                 rows = 20,
                 viewWidthPx = viewWidthPx,
                 viewHeightPx = viewHeightPx,
+                otsuThresholdBias = otsuThresholdBias,
             )
             val nextPiece = buildSnapshotFromOpenImage(
                 image,
@@ -86,6 +94,7 @@ object DualPlayfieldAnalyzer {
                 rows = 4,
                 viewWidthPx = viewWidthPx,
                 viewHeightPx = viewHeightPx,
+                otsuThresholdBias = otsuThresholdBias,
             )
             return DualPlayfieldSnapshots(playfield = playfield, nextPiece = nextPiece)
         } finally {

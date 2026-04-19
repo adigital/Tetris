@@ -45,19 +45,23 @@ object VisionGridHeuristics {
 
     /**
      * Классификация ячеек по контрасту между двумя кластерами (порог Оцу по гистограмме средних ячеек).
+     *
+     * @param otsuThresholdBias сдвиг порога в единицах яркости: **меньше** — больше клеток уйдёт в «тёмный»
+     *   кластер (удобно при низком контрасте LCD: серый фон и почти чёрные фигуры).
      * @return пары (клетки, уверенность 0..1).
      */
     fun classifyMeans(
         means: FloatArray,
         columns: Int,
         rows: Int,
+        otsuThresholdBias: Float = 0f,
     ): Pair<List<CellKind>, Float> {
         if (means.isEmpty()) {
             return List(columns * rows) { CellKind.Unknown } to 0f
         }
         val samples = IntArray(means.size) { i -> means[i].roundToInt().coerceIn(0, 255) }
         val threshold = otsuThreshold(samples) ?: return List(columns * rows) { CellKind.Unknown } to 0f
-        val boundary = threshold.toFloat() + 0.5f
+        val boundary = (threshold.toFloat() + 0.5f + otsuThresholdBias).coerceIn(1f, 254f)
 
         val below = means.filter { it < boundary }
         val above = means.filter { it >= boundary }

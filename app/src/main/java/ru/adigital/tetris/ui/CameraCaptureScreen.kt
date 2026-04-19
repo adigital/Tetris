@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -54,10 +55,18 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import ru.adigital.tetris.R
+import ru.adigital.tetris.R.string.camera_analysis_stub
+import ru.adigital.tetris.R.string.camera_grant_permission
+import ru.adigital.tetris.R.string.camera_next_summary
+import ru.adigital.tetris.R.string.camera_permission_denied
+import ru.adigital.tetris.R.string.camera_permission_hint
+import ru.adigital.tetris.R.string.camera_roi_corner_hint
+import ru.adigital.tetris.R.string.camera_snapshot_summary
 import ru.adigital.tetris.camera.hasCameraPermission
 import ru.adigital.tetris.settings.DualRoiSettings
+import ru.adigital.tetris.settings.loadCvOtsuThresholdBias
 import ru.adigital.tetris.settings.loadDualRoiSettings
+import ru.adigital.tetris.settings.saveCvOtsuThresholdBias
 import ru.adigital.tetris.settings.saveDualRoiSettings
 import ru.adigital.tetris.ui.theme.TetrisTheme
 import ru.adigital.tetris.vision.DualPlayfieldAnalyzer
@@ -89,7 +98,7 @@ fun CameraCaptureScreen(modifier: Modifier = Modifier) {
     ) {
         if (!hasPermission) {
             Text(
-                text = stringResource(R.string.camera_permission_hint),
+                text = stringResource(camera_permission_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
             Button(
@@ -100,11 +109,11 @@ fun CameraCaptureScreen(modifier: Modifier = Modifier) {
                 },
                 enabled = activity != null,
             ) {
-                Text(stringResource(R.string.camera_grant_permission))
+                Text(stringResource(camera_grant_permission))
             }
             if (permissionDeniedOnce) {
                 Text(
-                    text = stringResource(R.string.camera_permission_denied),
+                    text = stringResource(camera_permission_denied),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -120,6 +129,9 @@ private fun CameraPreviewWithRoi(modifier: Modifier = Modifier) {
     val context = LocalContext.current.applicationContext
     var dualRoi by remember { mutableStateOf(DualRoiSettings.Default) }
     var roiSettingsLoaded by remember { mutableStateOf(false) }
+    var cvSettingsLoaded by remember { mutableStateOf(false) }
+    var otsuThresholdBias by remember { mutableFloatStateOf(0f) }
+    val otsuThresholdBiasRef = remember { AtomicReference(0f) }
     var dualSnapshots by remember { mutableStateOf<DualPlayfieldSnapshots?>(null) }
     var fps by remember { mutableStateOf("-- fps") }
     var analysisBufferWidth by remember { mutableStateOf<Int?>(null) }
@@ -128,6 +140,13 @@ private fun CameraPreviewWithRoi(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         dualRoi = withContext(Dispatchers.IO) { context.loadDualRoiSettings() }
         roiSettingsLoaded = true
+    }
+
+    LaunchedEffect(Unit) {
+        val b = withContext(Dispatchers.IO) { context.loadCvOtsuThresholdBias() }
+        otsuThresholdBias = b
+        otsuThresholdBiasRef.set(b)
+        cvSettingsLoaded = true
     }
 
     LaunchedEffect(
@@ -147,9 +166,21 @@ private fun CameraPreviewWithRoi(modifier: Modifier = Modifier) {
         }
     }
 
+    LaunchedEffect(otsuThresholdBias, cvSettingsLoaded) {
+        if (!cvSettingsLoaded) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            context.saveCvOtsuThresholdBias(otsuThresholdBias)
+        }
+    }
+
     CameraPreviewWithRoiLayout(
         dualRoi = dualRoi,
         onDualRoiChange = { dualRoi = it },
+        otsuThresholdBias = otsuThresholdBias,
+        onOtsuThresholdBiasChange = { v ->
+            otsuThresholdBias = v
+            otsuThresholdBiasRef.set(v)
+        },
         fps = fps,
         dualSnapshots = dualSnapshots,
         analysisBufferWidth = analysisBufferWidth,
@@ -159,6 +190,7 @@ private fun CameraPreviewWithRoi(modifier: Modifier = Modifier) {
             CameraPreview(
                 modifier = Modifier.fillMaxSize(),
                 dualRoi = dualRoi,
+                otsuThresholdBiasRef = otsuThresholdBiasRef,
                 onDualSnapshots = { dualSnapshots = it },
                 onFps = { fps = it },
                 onAnalysisBufferSize = { w, h ->
@@ -174,6 +206,8 @@ private fun CameraPreviewWithRoi(modifier: Modifier = Modifier) {
 private fun CameraPreviewWithRoiLayout(
     dualRoi: DualRoiSettings,
     onDualRoiChange: (DualRoiSettings) -> Unit,
+    otsuThresholdBias: Float,
+    onOtsuThresholdBiasChange: (Float) -> Unit,
     fps: String,
     dualSnapshots: DualPlayfieldSnapshots?,
     analysisBufferWidth: Int?,
@@ -186,7 +220,7 @@ private fun CameraPreviewWithRoiLayout(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = stringResource(R.string.camera_roi_corner_hint),
+            text = stringResource(camera_roi_corner_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -238,22 +272,26 @@ private fun CameraPreviewWithRoiLayout(
                 }
             }
         }
-        RecognizedDualGridsRow(
+        RecognizedCvRecognitionPanel(
             playfield = dualSnapshots?.playfield,
             nextPiece = dualSnapshots?.nextPiece,
-            modifier = Modifier.fillMaxWidth(),
+            otsuThresholdBias = otsuThresholdBias,
+            onOtsuThresholdBiasChange = onOtsuThresholdBiasChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
         )
         Column(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                text = stringResource(R.string.camera_analysis_stub, fps),
+                text = stringResource(camera_analysis_stub, fps),
                 style = MaterialTheme.typography.bodySmall,
             )
             dualSnapshots?.let { d ->
                 Text(
                     text = stringResource(
-                        R.string.camera_snapshot_summary,
+                        camera_snapshot_summary,
                         d.playfield.columns,
                         d.playfield.rows,
                         d.playfield.confidence,
@@ -262,7 +300,7 @@ private fun CameraPreviewWithRoiLayout(
                 )
                 Text(
                     text = stringResource(
-                        R.string.camera_next_summary,
+                        camera_next_summary,
                         d.nextPiece.columns,
                         d.nextPiece.rows,
                         d.nextPiece.confidence,
@@ -287,6 +325,7 @@ private fun Context.displayRotationCompat(): Int =
 @Composable
 private fun CameraPreview(
     dualRoi: DualRoiSettings,
+    otsuThresholdBiasRef: AtomicReference<Float>,
     onDualSnapshots: (DualPlayfieldSnapshots) -> Unit,
     onFps: (String) -> Unit,
     onAnalysisBufferSize: ((Int, Int) -> Unit)? = null,
@@ -391,6 +430,7 @@ private fun CameraPreview(
                                     dualRoiState.value.nextPiece,
                                     viewWidthPx = vw,
                                     viewHeightPx = vh,
+                                    otsuThresholdBias = otsuThresholdBiasRef.get(),
                                 )
                                 fpsAcc.frames++
                                 val now = System.nanoTime()
@@ -445,9 +485,12 @@ private fun CameraPreviewWithRoiLayoutPreview() {
     TetrisTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             var dual by remember { mutableStateOf(DualRoiSettings.Default) }
+            var bias by remember { mutableFloatStateOf(0f) }
             CameraPreviewWithRoiLayout(
                 dualRoi = dual,
                 onDualRoiChange = { dual = it },
+                otsuThresholdBias = bias,
+                onOtsuThresholdBiasChange = { bias = it },
                 fps = "30 fps",
                 dualSnapshots = null,
                 analysisBufferWidth = null,

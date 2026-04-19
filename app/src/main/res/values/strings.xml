@@ -36,4 +36,7 @@
     <string name="camera_label_playfield">Поле (распознано)</string>
     <string name="camera_label_next">Следующая (распознано)</string>
     <string name="camera_roi_corner_hint">Зелёная зона — стакан, оранжевая — «следующая». Тяните белые маркеры за углы.</string>
+    <string name="camera_cv_otsu_bias_title">Порог фон / фигуры (вокруг авто Оцу)</string>
+    <string name="camera_cv_otsu_bias_hint">Влево — сильнее тянуть к тёмным клеткам (фигуры), вправо — к светлому фону LCD.</string>
+    <string name="camera_cv_otsu_bias_value">Смещение: %1$.0f</string>
 </resources>

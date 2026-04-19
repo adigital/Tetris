@@ -29,10 +29,11 @@
 
 | Дата | Изменение |
 |------|-----------|
+| 2026-04-19 | Камера UI: `RecognizedCvRecognitionPanel` — стакан 10×20 с квадратными ячейками, справа 4×4 с тем же размером ячейки + слайдер порога в одной высоте со стаканом. |
 | 2026-04-19 | CV: после вырезки ROI с маппингом превью — поворот яркости на 90° по часовой (`FramePreprocessor.rotateGrayscale90Clockwise`), чтобы сетка совпадала с ориентацией тетриса на экране. |
 | 2026-04-19 | Камера: ROI превью → буфер `ImageAnalysis` — `PreviewToBufferRoiMapper` (FIT_CENTER + `rotationDegrees`), размер `PreviewView` в анализ; исправление «весь кадр» и перепутанных сторон. |
 | 2026-04-19 | Камера: ROI без слайдеров — перетаскивание углов (`RoiCornerDragOverlay.kt`), превью на всю ширину блока; зелёный/оранжевый прямоугольники + маркеры. |
-| 2026-04-19 | Фаза 2: два ROI (`DualRoiSettings` + DataStore), `DualPlayfieldAnalyzer` (10×20 + 4×4), оверлей зелёный/оранжевый, `RecognizedDualGridsRow` — визуализация сеток в реальном времени (`RoiSettingsStore`, `PlayfieldAnalyzer`, `RecognizedGridVisualization.kt`). |
+| 2026-04-19 | Фаза 2: два ROI (`DualRoiSettings` + DataStore), `DualPlayfieldAnalyzer` (10×20 + 4×4), оверлей зелёный/оранжевый, визуализация сеток в реальном времени (`RecognizedCvRecognitionPanel` в `RecognizedGridVisualization.kt`, `PlayfieldAnalyzer`). |
 | 2026-04-19 | Камера: защита от утечки bind — флаг после dispose, проверки перед `bindToLifecycle`, `clearAnalyzer` + `unbindAll`, `shutdownNow` исполнителя анализа (`CameraCaptureScreen`). |
 | 2026-04-19 | Камера: для `aspectRatio` превью — размер буфера с учётом `ImageInfo.rotationDegrees` (иначе «широкий» контейнер и crop по вертикали); `PreviewView` — `FIT_CENTER`. |
 | 2026-04-19 | Камера: превью на всю ширину между узкими боковыми слайдерами; контейнер с `aspectRatio` по размеру буфера `ImageAnalysis`, чтобы убрать лишний crop `FILL_CENTER`; размер буфера при смене кадра/ориентации в `CameraCaptureScreen.kt`. |
