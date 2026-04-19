@@ -30,6 +30,10 @@
     <string name="camera_slider_top">Верх</string>
     <string name="camera_slider_right">Право</string>
     <string name="camera_slider_bottom">Низ</string>
-    <string name="camera_analysis_stub">Анализ (заглушка), частота: %1$s</string>
-    <string name="camera_snapshot_summary">Снимок: %1$d×%2$d, уверенность=%3$.2f</string>
+    <string name="camera_analysis_stub">Анализ: стакан 10×20 + next 4×4, частота: %1$s</string>
+    <string name="camera_snapshot_summary">Стакан: %1$d×%2$d, уверенность=%3$.2f</string>
+    <string name="camera_next_summary">Следующая: %1$d×%2$d, уверенность=%3$.2f</string>
+    <string name="camera_label_playfield">Поле (распознано)</string>
+    <string name="camera_label_next">Следующая (распознано)</string>
+    <string name="camera_roi_corner_hint">Зелёная зона — стакан, оранжевая — «следующая». Тяните белые маркеры за углы.</string>
 </resources>

@@ -29,6 +29,17 @@
 
 | Дата | Изменение |
 |------|-----------|
+| 2026-04-19 | CV next 4×4: сброс полного крайнего столбца/строки «блоков», если средняя яркость близка к фону по периметру — борьба с рамкой LCD в ROI (`stripFalseBezelEdgeLineOnSmallGrid`). |
+| 2026-04-19 | CV: инверсия type B ослаблена (>82% Filled, ≤2 угла); добавлена `shouldInvertBrightCornersDenseFill` (светлые углы по яркости при плотном «заливе»). |
+| 2026-04-19 | CV: инверсия при >86% Filled и ≤1 углах Filled; окно next ≤25 клеток — классификация по **периметру как фону** без Оцу (`classifySmallGridByBorderRef`, `borderCellIndices`). |
+| 2026-04-19 | CV: адаптивная обрезка ячейки по размеру клетки (мельче — меньше trim для 4×4), снятие одиночных «блоков»-шума на стакане (`trimFractionForCellSpan`, `removeLoneFilledSpeckles`). |
+| 2026-04-19 | CV: средняя яркость по **центру ячейки** (обрезка краёв под линии LCD), полярность по углам + откат при разном верхнем ряду, авто-**инверсия** при >68% «занято» и ≥3 углах тоже «занято» (`VisionGridHeuristics.kt`). |
+| 2026-04-19 | Камера: ROI без слайдеров — перетаскивание углов (`RoiCornerDragOverlay.kt`), превью на всю ширину блока; зелёный/оранжевый прямоугольники + маркеры. |
+| 2026-04-19 | Фаза 2: два ROI (`DualRoiSettings` + DataStore), `DualPlayfieldAnalyzer` (10×20 + 4×4), оверлей зелёный/оранжевый, `RecognizedDualGridsRow` — визуализация сеток в реальном времени (`RoiSettingsStore`, `PlayfieldAnalyzer`, `RecognizedGridVisualization.kt`). |
+| 2026-04-19 | Камера: защита от утечки bind — флаг после dispose, проверки перед `bindToLifecycle`, `clearAnalyzer` + `unbindAll`, `shutdownNow` исполнителя анализа (`CameraCaptureScreen`). |
+| 2026-04-19 | Камера: для `aspectRatio` превью — размер буфера с учётом `ImageInfo.rotationDegrees` (иначе «широкий» контейнер и crop по вертикали); `PreviewView` — `FIT_CENTER`. |
+| 2026-04-19 | Камера: превью на всю ширину между узкими боковыми слайдерами; контейнер с `aspectRatio` по размеру буфера `ImageAnalysis`, чтобы убрать лишний crop `FILL_CENTER`; размер буфера при смене кадра/ориентации в `CameraCaptureScreen.kt`. |
+| 2026-04-19 | Фаза 2: `FramePreprocessor.extractGrayscaleRoi` (YUV Y + ROI), `VisionGridHeuristics` (средняя яркость ячеек, Оцу), `HeuristicGridPlayfieldAnalyzer` 10×20 вместо заглушки в `CameraCaptureScreen`; `setTargetRotation` у Preview/ImageAnalysis. |
 | 2026-04-19 | Фаза 2 (старт): CameraX превью + `ImageAnalysis`, ROI (слайдеры, оверлей, `rememberSaveable`), заглушка `StubPlayfieldAnalyzer`, модели `NormalizedRoi` / `PlayfieldSnapshot`, вкладка «Камера» в `MainActivity`, `CameraCaptureScreen.kt`, разрешение `CAMERA`. |
 | 2026-04-19 | Step3: четыре серва GPIO 13/12/14/27, команды `0x02`..`0x05`; скетч `Arduino/TetrisBLE_Step3_FourServos/`, Android: `BleTetrisConfig`, четыре кнопки тапа в `MainActivity`. |
 | 2026-04-19 | BLE Step1 (подключение + мигание), Android: скан, GATT, кнопка мигания. Step2: команда `0x02`, серво GPIO 13, `writeCommand` / «Тап сервой». |
@@ -59,8 +70,8 @@
 ## Фаза 2 — Захват и понимание картинки с камеры
 
 - [x] Захват превью/кадра (CameraX или аналог), стабильный ROI области экрана тетриса
-- [ ] Предобработка (обрезка, масштаб, бинаризация при необходимости) — задел: `FramePreprocessor`, без конвертации YUV
-- [ ] Распознавание сетки/фигур или упрощённый конвейер под конкретную модель тетриса
+- [x] Предобработка (обрезка по ROI, яркость из плоскости Y YUV_420_888) — `FramePreprocessor`, масштаб/бинаризация — по необходимости позже
+- [x] Упрощённый конвейер: сетка 10×20 по средней яркости ячеек + порог Оцу (`HeuristicGridPlayfieldAnalyzer`, `VisionGridHeuristics`); отдельный ROI и сетка 4×4 для окна «следующая»; визуализация обеих сеток в UI; распознавание **типа** фигуры (I/O/T…) — позже
 - [x] Выход в код: структура «игровое состояние» (матрица, текущая фигура, следующая — по мере необходимости) — `PlayfieldSnapshot` / `CellKind`, пока заглушка анализатора
 
 ---

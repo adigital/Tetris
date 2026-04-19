@@ -1,7 +1,11 @@
 package ru.adigital.tetris.ui
 
 import android.Manifest
+import android.content.Context
+import android.os.Build
+import android.view.Surface
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,21 +18,18 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -43,21 +44,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -65,13 +57,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.adigital.tetris.R
 import ru.adigital.tetris.camera.hasCameraPermission
-import ru.adigital.tetris.settings.loadRoiSettings
-import ru.adigital.tetris.settings.saveRoiSettings
+import ru.adigital.tetris.settings.DualRoiSettings
+import ru.adigital.tetris.settings.loadDualRoiSettings
+import ru.adigital.tetris.settings.saveDualRoiSettings
 import ru.adigital.tetris.ui.theme.TetrisTheme
-import ru.adigital.tetris.vision.NormalizedRoi
-import ru.adigital.tetris.vision.PlayfieldSnapshot
-import ru.adigital.tetris.vision.StubPlayfieldAnalyzer
+import ru.adigital.tetris.vision.DualPlayfieldAnalyzer
+import ru.adigital.tetris.vision.DualPlayfieldSnapshots
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 @Composable
@@ -124,38 +118,53 @@ fun CameraCaptureScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun CameraPreviewWithRoi(modifier: Modifier = Modifier) {
     val context = LocalContext.current.applicationContext
-    var roi by remember { mutableStateOf(NormalizedRoi.Default) }
+    var dualRoi by remember { mutableStateOf(DualRoiSettings.Default) }
     var roiSettingsLoaded by remember { mutableStateOf(false) }
-    var snapshot by remember { mutableStateOf<PlayfieldSnapshot?>(null) }
+    var dualSnapshots by remember { mutableStateOf<DualPlayfieldSnapshots?>(null) }
     var fps by remember { mutableStateOf("-- fps") }
+    var analysisBufferWidth by remember { mutableStateOf<Int?>(null) }
+    var analysisBufferHeight by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
-        val loaded = withContext(Dispatchers.IO) { context.loadRoiSettings() }
-        if (loaded != null) {
-            roi = loaded
-        }
+        dualRoi = withContext(Dispatchers.IO) { context.loadDualRoiSettings() }
         roiSettingsLoaded = true
     }
 
-    LaunchedEffect(roi.left, roi.top, roi.right, roi.bottom, roiSettingsLoaded) {
+    LaunchedEffect(
+        dualRoi.playfield.left,
+        dualRoi.playfield.top,
+        dualRoi.playfield.right,
+        dualRoi.playfield.bottom,
+        dualRoi.nextPiece.left,
+        dualRoi.nextPiece.top,
+        dualRoi.nextPiece.right,
+        dualRoi.nextPiece.bottom,
+        roiSettingsLoaded,
+    ) {
         if (!roiSettingsLoaded) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            context.saveRoiSettings(roi)
+            context.saveDualRoiSettings(dualRoi)
         }
     }
 
     CameraPreviewWithRoiLayout(
-        roi = roi,
-        onRoiChange = { roi = it },
+        dualRoi = dualRoi,
+        onDualRoiChange = { dualRoi = it },
         fps = fps,
-        snapshot = snapshot,
+        dualSnapshots = dualSnapshots,
+        analysisBufferWidth = analysisBufferWidth,
+        analysisBufferHeight = analysisBufferHeight,
         modifier = modifier,
         preview = {
             CameraPreview(
                 modifier = Modifier.fillMaxSize(),
-                roi = roi,
-                onSnapshot = { snapshot = it },
+                dualRoi = dualRoi,
+                onDualSnapshots = { dualSnapshots = it },
                 onFps = { fps = it },
+                onAnalysisBufferSize = { w, h ->
+                    analysisBufferWidth = w
+                    analysisBufferHeight = h
+                },
             )
         },
     )
@@ -163,115 +172,100 @@ private fun CameraPreviewWithRoi(modifier: Modifier = Modifier) {
 
 @Composable
 private fun CameraPreviewWithRoiLayout(
-    roi: NormalizedRoi,
-    onRoiChange: (NormalizedRoi) -> Unit,
+    dualRoi: DualRoiSettings,
+    onDualRoiChange: (DualRoiSettings) -> Unit,
     fps: String,
-    snapshot: PlayfieldSnapshot?,
+    dualSnapshots: DualPlayfieldSnapshots?,
+    analysisBufferWidth: Int?,
+    analysisBufferHeight: Int?,
     modifier: Modifier = Modifier,
     preview: @Composable () -> Unit,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.camera_roi_corner_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .graphicsLayer { clip = false },
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
+            BoxWithConstraints(
                 modifier = Modifier
-                    .width(RoiSideColumnWidth)
-                    .fillMaxHeight()
-                    .zIndex(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
             ) {
+                val ratio = if (analysisBufferWidth != null && analysisBufferHeight != null &&
+                    analysisBufferHeight > 0
+                ) {
+                    analysisBufferWidth.toFloat() / analysisBufferHeight.toFloat()
+                } else {
+                    null
+                }
+                val previewBoxModifier = if (ratio != null && ratio > 0f) {
+                    val cw = maxWidth.value
+                    val ch = maxHeight.value
+                    if (ch > 0f && cw / ch > ratio) {
+                        Modifier.fillMaxHeight().aspectRatio(ratio)
+                    } else {
+                        Modifier.fillMaxWidth().aspectRatio(ratio)
+                    }
+                } else {
+                    Modifier.fillMaxSize()
+                }
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .zIndex(1f),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CompactRoiSliderVertical(
-                        value = roi.left,
-                        onValueChange = { v ->
-                            onRoiChange(NormalizedRoi.fromRaw(v, roi.top, roi.right, roi.bottom))
-                        },
-                        valueRange = 0f..0.45f,
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(horizontal = 4.dp)
-                    .zIndex(0f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                CompactRoiSlider(
-                    value = roi.top,
-                    onValueChange = { v ->
-                        onRoiChange(NormalizedRoi.fromRaw(roi.left, v, roi.right, roi.bottom))
-                    },
-                    valueRange = 0f..0.45f,
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .clip(RectangleShape),
-                ) {
-                    preview()
-                    RoiOverlay(roi = roi, modifier = Modifier.fillMaxSize())
-                }
-                CompactRoiSlider(
-                    value = roi.bottom,
-                    onValueChange = { v ->
-                        onRoiChange(NormalizedRoi.fromRaw(roi.left, roi.top, roi.right, v))
-                    },
-                    valueRange = 0.55f..1f,
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .width(RoiSideColumnWidth)
-                    .fillMaxHeight()
-                    .zIndex(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .zIndex(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CompactRoiSliderVertical(
-                        value = roi.right,
-                        onValueChange = { v ->
-                            onRoiChange(NormalizedRoi.fromRaw(roi.left, roi.top, v, roi.bottom))
-                        },
-                        valueRange = 0.55f..1f,
-                    )
+                    Box(
+                        modifier = previewBoxModifier
+                            .clip(RectangleShape),
+                    ) {
+                        preview()
+                        RoiCornerDragOverlay(
+                            dualRoi = dualRoi,
+                            onDualRoiChange = onDualRoiChange,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
+        RecognizedDualGridsRow(
+            playfield = dualSnapshots?.playfield,
+            nextPiece = dualSnapshots?.nextPiece,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
                 text = stringResource(R.string.camera_analysis_stub, fps),
                 style = MaterialTheme.typography.bodySmall,
             )
-            snapshot?.let { snap ->
+            dualSnapshots?.let { d ->
                 Text(
                     text = stringResource(
                         R.string.camera_snapshot_summary,
-                        snap.columns,
-                        snap.rows,
-                        snap.confidence,
+                        d.playfield.columns,
+                        d.playfield.rows,
+                        d.playfield.confidence,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.camera_next_summary,
+                        d.nextPiece.columns,
+                        d.nextPiece.rows,
+                        d.nextPiece.confidence,
                     ),
                     style = MaterialTheme.typography.labelSmall,
                 )
@@ -280,165 +274,70 @@ private fun CameraPreviewWithRoiLayout(
     }
 }
 
-private val RoiSideColumnWidth = 56.dp
-
-private val RoiSliderVisualHeight = 22.dp
-private val RoiSliderTrackHeight = 3.dp
-private val RoiSliderThumbSize = DpSize(12.dp, 12.dp)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CompactRoiSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val colors = SliderDefaults.colors()
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        valueRange = valueRange,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(RoiSliderVisualHeight),
-        interactionSource = interactionSource,
-        colors = colors,
-        thumb = {
-            SliderDefaults.Thumb(
-                interactionSource = interactionSource,
-                colors = colors,
-                enabled = true,
-                thumbSize = RoiSliderThumbSize,
-            )
-        },
-        track = { sliderState ->
-            SliderDefaults.Track(
-                sliderState = sliderState,
-                colors = colors,
-                enabled = true,
-                modifier = Modifier.height(RoiSliderTrackHeight),
-            )
-        },
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CompactRoiSliderVertical(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val colors = SliderDefaults.colors()
-    val density = LocalDensity.current
-    Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .fillMaxWidth(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            modifier = Modifier
-                .fillMaxSize()
-                .layout { measurable, constraints ->
-                    val maxH = constraints.maxHeight
-                    val padPx = with(density) { 16.dp.roundToPx() }
-                    val minTrackPx = with(density) { 160.dp.roundToPx() }
-                    val trackPx = (maxH - padPx).coerceAtLeast(minTrackPx)
-                    val thickPx = with(density) { RoiSliderVisualHeight.roundToPx() }.coerceAtLeast(1)
-                    val placeable = measurable.measure(Constraints.fixed(trackPx, thickPx))
-                    layout(constraints.maxWidth, constraints.maxHeight) {
-                        placeable.place(
-                            x = (constraints.maxWidth - placeable.width) / 2,
-                            y = (constraints.maxHeight - placeable.height) / 2,
-                        )
-                    }
-                }
-                .graphicsLayer {
-                    rotationZ = -90f
-                    transformOrigin = TransformOrigin(0.5f, 0.5f)
-                    clip = false
-                },
-            interactionSource = interactionSource,
-            colors = colors,
-            thumb = {
-                SliderDefaults.Thumb(
-                    interactionSource = interactionSource,
-                    colors = colors,
-                    enabled = true,
-                    thumbSize = RoiSliderThumbSize,
-                )
-            },
-            track = { sliderState ->
-                SliderDefaults.Track(
-                    sliderState = sliderState,
-                    colors = colors,
-                    enabled = true,
-                    modifier = Modifier.height(RoiSliderTrackHeight),
-                )
-            },
-        )
+/**
+ * Размеры кадра анализа в координатах, совпадающих с тем, как буфер показывается в портретном UI
+ * (учёт [androidx.camera.core.ImageInfo.rotationDegrees]).
+ */
+private fun displayOrientedAnalysisSize(
+    bufferWidth: Int,
+    bufferHeight: Int,
+    rotationDegrees: Int,
+): Pair<Int, Int> =
+    if (rotationDegrees == 90 || rotationDegrees == 270) {
+        bufferHeight to bufferWidth
+    } else {
+        bufferWidth to bufferHeight
     }
-}
 
-@Composable
-private fun RoiOverlay(roi: NormalizedRoi, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val left = roi.left * w
-        val top = roi.top * h
-        val rw = (roi.right - roi.left) * w
-        val rh = (roi.bottom - roi.top) * h
-        drawRect(
-            color = Color.Green.copy(alpha = 0.12f),
-            topLeft = Offset(left, top),
-            size = Size(rw, rh),
-        )
-        drawRect(
-            color = Color.Green,
-            topLeft = Offset(left, top),
-            size = Size(rw, rh),
-            style = Stroke(width = 3.dp.toPx()),
-        )
+@Suppress("DEPRECATION")
+private fun Context.displayRotationCompat(): Int =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        display?.rotation ?: Surface.ROTATION_0
+    } else {
+        (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+            .defaultDisplay
+            .rotation
     }
-}
 
 @Composable
 private fun CameraPreview(
-    roi: NormalizedRoi,
-    onSnapshot: (PlayfieldSnapshot) -> Unit,
+    dualRoi: DualRoiSettings,
+    onDualSnapshots: (DualPlayfieldSnapshots) -> Unit,
     onFps: (String) -> Unit,
+    onAnalysisBufferSize: ((Int, Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val roiState = rememberUpdatedState(roi)
-    val onSnapshotState = rememberUpdatedState(onSnapshot)
+    val dualRoiState = rememberUpdatedState(dualRoi)
+    val onDualSnapshotsState = rememberUpdatedState(onDualSnapshots)
     val onFpsState = rememberUpdatedState(onFps)
     val providerRef = remember { AtomicReference<ProcessCameraProvider?>(null) }
+    val imageAnalysisRef = remember { AtomicReference<ImageAnalysis?>(null) }
+    /** После dispose экрана камеры — не вызывать bind (избегаем утечки и «max cameras»). */
+    val cameraReleased = remember { AtomicBoolean(false) }
     val fpsAcc = remember {
         object {
             var frames: Int = 0
             var windowStartNs: Long = 0L
         }
     }
+    /** Упакованные width<<32|height; -1 = ещё не было кадра. */
+    val lastAnalysisPacked = remember { AtomicLong(-1L) }
+    val onAnalysisBufferSizeState = rememberUpdatedState(onAnalysisBufferSize)
 
     DisposableEffect(lifecycleOwner) {
+        cameraReleased.set(false)
         onDispose {
+            cameraReleased.set(true)
+            lastAnalysisPacked.set(-1L)
+            imageAnalysisRef.getAndSet(null)?.clearAnalyzer()
             try {
                 providerRef.getAndSet(null)?.unbindAll()
             } catch (_: Exception) {
             }
-            executor.shutdown()
+            executor.shutdownNow()
         }
     }
 
@@ -450,7 +349,7 @@ private fun CameraPreview(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
-                scaleType = PreviewView.ScaleType.FILL_CENTER
+                scaleType = PreviewView.ScaleType.FIT_CENTER
                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                 post {
                     val appContext = ctx.applicationContext
@@ -458,16 +357,45 @@ private fun CameraPreview(
                     val future = ProcessCameraProvider.getInstance(appContext)
                     future.addListener(
                         {
-                            val cameraProvider = future.get()
-                            providerRef.set(cameraProvider)
-                            val preview = CameraXPreview.Builder().build().also { p ->
-                                p.surfaceProvider = surfaceProvider
+                            if (cameraReleased.get()) return@addListener
+                            val cameraProvider = try {
+                                future.get()
+                            } catch (_: Exception) {
+                                return@addListener
                             }
+                            if (cameraReleased.get()) return@addListener
+                            providerRef.set(cameraProvider)
+                            val rotation = ctx.displayRotationCompat()
+                            val preview = CameraXPreview.Builder()
+                                .setTargetRotation(rotation)
+                                .build()
+                                .also { p ->
+                                    p.surfaceProvider = surfaceProvider
+                                }
                             val analysis = ImageAnalysis.Builder()
+                                .setTargetRotation(rotation)
                                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                 .build()
                             analysis.setAnalyzer(executor) { image ->
-                                val snap = StubPlayfieldAnalyzer.analyze(image, roiState.value)
+                                val w = image.width
+                                val h = image.height
+                                val rot = image.imageInfo.rotationDegrees
+                                val (dw, dh) = displayOrientedAnalysisSize(w, h, rot)
+                                if (dw > 0 && dh > 0) {
+                                    val packed = (dw.toLong() shl 32) or (dh.toLong() and 0xffff_ffffL)
+                                    if (lastAnalysisPacked.get() != packed) {
+                                        lastAnalysisPacked.set(packed)
+                                        val cb = onAnalysisBufferSizeState.value
+                                        if (cb != null) {
+                                            mainExecutor.execute { cb(dw, dh) }
+                                        }
+                                    }
+                                }
+                                val dual = DualPlayfieldAnalyzer.analyze(
+                                    image,
+                                    dualRoiState.value.playfield,
+                                    dualRoiState.value.nextPiece,
+                                )
                                 fpsAcc.frames++
                                 val now = System.nanoTime()
                                 if (fpsAcc.windowStartNs == 0L) {
@@ -482,8 +410,12 @@ private fun CameraPreview(
                                     }
                                 }
                                 mainExecutor.execute {
-                                    onSnapshotState.value(snap)
+                                    onDualSnapshotsState.value(dual)
                                 }
+                            }
+                            if (cameraReleased.get()) {
+                                analysis.clearAnalyzer()
+                                return@addListener
                             }
                             try {
                                 cameraProvider.unbindAll()
@@ -493,7 +425,14 @@ private fun CameraPreview(
                                     preview,
                                     analysis,
                                 )
+                                if (!cameraReleased.get()) {
+                                    imageAnalysisRef.set(analysis)
+                                } else {
+                                    analysis.clearAnalyzer()
+                                    cameraProvider.unbindAll()
+                                }
                             } catch (_: Exception) {
+                                analysis.clearAnalyzer()
                             }
                         },
                         mainExecutor,
@@ -504,17 +443,19 @@ private fun CameraPreview(
     )
 }
 
-@Preview(name = "Камера: ROI и слайдеры", showBackground = true, heightDp = 780, widthDp = 360)
+@Preview(name = "Камера: ROI углами", showBackground = true, heightDp = 780, widthDp = 360)
 @Composable
 private fun CameraPreviewWithRoiLayoutPreview() {
     TetrisTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
-            var roi by remember { mutableStateOf(NormalizedRoi.Default) }
+            var dual by remember { mutableStateOf(DualRoiSettings.Default) }
             CameraPreviewWithRoiLayout(
-                roi = roi,
-                onRoiChange = { roi = it },
+                dualRoi = dual,
+                onDualRoiChange = { dual = it },
                 fps = "30 fps",
-                snapshot = PlayfieldSnapshot.unknownGrid(),
+                dualSnapshots = null,
+                analysisBufferWidth = null,
+                analysisBufferHeight = null,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(8.dp),
