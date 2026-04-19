@@ -30,6 +30,14 @@ object BleTetrisConfig {
     val CHARACTERISTIC_UUID: UUID = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb")
     /** Phone -> ESP32: one blink cycle on onboard LED (see TetrisBLE_Step1_Connect.ino). */
     const val CMD_BLINK: Byte = 0x01
+    /** Phone -> ESP32: tap «влево» — GPIO 13 (Step2 one-servo; Step3 four-servo). */
+    const val CMD_TAP_LEFT: Byte = 0x02
+    /** Phone -> ESP32: tap «вправо» — GPIO 12 (прошивка TetrisBLE_Step3_FourServos). */
+    const val CMD_TAP_RIGHT: Byte = 0x03
+    /** Phone -> ESP32: tap «поворот» — GPIO 14. */
+    const val CMD_TAP_ROTATE: Byte = 0x04
+    /** Phone -> ESP32: tap «вниз» — GPIO 27. */
+    const val CMD_TAP_DOWN: Byte = 0x05
 }
 
 fun bleConnectPermissions(): Array<String> {
@@ -251,19 +259,19 @@ class BleTetrisClient(private val appContext: Context) {
     }
 
     /**
-     * Queues a write of [BleTetrisConfig.CMD_BLINK] to the controller. Returns false if not connected
+     * Queues a one-byte write to the command characteristic. Returns false if not connected
      * or characteristic is not ready.
      */
-    fun requestBlink(): Boolean {
+    fun writeCommand(cmd: Byte): Boolean {
         val g = gatt ?: run {
-            Log.w(BleTetrisConfig.LOG_TAG, "requestBlink: GATT not connected")
+            Log.w(BleTetrisConfig.LOG_TAG, "writeCommand: GATT not connected")
             return false
         }
         val ch = commandCharacteristic ?: run {
-            Log.w(BleTetrisConfig.LOG_TAG, "requestBlink: characteristic not cached")
+            Log.w(BleTetrisConfig.LOG_TAG, "writeCommand: characteristic not cached")
             return false
         }
-        val payload = byteArrayOf(BleTetrisConfig.CMD_BLINK)
+        val payload = byteArrayOf(cmd)
         return try {
             val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 val result = g.writeCharacteristic(
@@ -279,16 +287,26 @@ class BleTetrisClient(private val appContext: Context) {
                 g.writeCharacteristic(ch)
             }
             if (ok) {
-                Log.i(BleTetrisConfig.LOG_TAG, "requestBlink: write queued (CMD_BLINK)")
+                Log.i(BleTetrisConfig.LOG_TAG, "writeCommand: write queued (cmd=0x%02X)".format(cmd.toInt() and 0xff))
             } else {
-                Log.e(BleTetrisConfig.LOG_TAG, "requestBlink: writeCharacteristic returned false / non-success")
+                Log.e(BleTetrisConfig.LOG_TAG, "writeCommand: writeCharacteristic returned false / non-success")
             }
             ok
         } catch (e: SecurityException) {
-            Log.e(BleTetrisConfig.LOG_TAG, "requestBlink: SecurityException", e)
+            Log.e(BleTetrisConfig.LOG_TAG, "writeCommand: SecurityException", e)
             false
         }
     }
+
+    fun requestBlink(): Boolean = writeCommand(BleTetrisConfig.CMD_BLINK)
+
+    fun requestTapLeft(): Boolean = writeCommand(BleTetrisConfig.CMD_TAP_LEFT)
+
+    fun requestTapRight(): Boolean = writeCommand(BleTetrisConfig.CMD_TAP_RIGHT)
+
+    fun requestTapRotate(): Boolean = writeCommand(BleTetrisConfig.CMD_TAP_ROTATE)
+
+    fun requestTapDown(): Boolean = writeCommand(BleTetrisConfig.CMD_TAP_DOWN)
 
     private fun connectToDevice(device: BluetoothDevice, onBusy: (Boolean) -> Unit) {
         Log.i(BleTetrisConfig.LOG_TAG, "connectGatt(${device.address})")

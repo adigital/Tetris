@@ -12,4 +12,9 @@
     <string name="blink_led">Мигнуть</string>
     <string name="ble_blink_queued">Команда «мигнуть» отправлена</string>
     <string name="ble_blink_no_connection">Сначала подключитесь к контроллеру</string>
+    <string name="tap_left">Влево</string>
+    <string name="tap_right">Вправо</string>
+    <string name="tap_rotate">Поворот</string>
+    <string name="tap_down">Вниз</string>
+    <string name="ble_tap_queued">Команда «тап» отправлена</string>
 </resources>
