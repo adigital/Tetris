@@ -29,13 +29,8 @@
 
 | Дата | Изменение |
 |------|-----------|
-| 2026-04-19 | CV стакан: если **вся верхняя строка** Filled и это **все** Filled на поле (≤10 клеток) — сброс без порога по яркости (ложный HUD). |
-| 2026-04-19 | CV стакан 10×20: сброс ложной **верхней строки** (HUD/рамка), если вся строка Filled и яркость как у строк 1–3 (`stripFalseHudTopRowLargeGrid`). |
-| 2026-04-19 | CV next 4×4: сброс полного крайнего столбца/строки «блоков», если средняя яркость близка к фону по периметру — борьба с рамкой LCD в ROI (`stripFalseBezelEdgeLineOnSmallGrid`). |
-| 2026-04-19 | CV: инверсия type B ослаблена (>82% Filled, ≤2 угла); добавлена `shouldInvertBrightCornersDenseFill` (светлые углы по яркости при плотном «заливе»). |
-| 2026-04-19 | CV: инверсия при >86% Filled и ≤1 углах Filled; окно next ≤25 клеток — классификация по **периметру как фону** без Оцу (`classifySmallGridByBorderRef`, `borderCellIndices`). |
-| 2026-04-19 | CV: адаптивная обрезка ячейки по размеру клетки (мельче — меньше trim для 4×4), снятие одиночных «блоков»-шума на стакане (`trimFractionForCellSpan`, `removeLoneFilledSpeckles`). |
-| 2026-04-19 | CV: средняя яркость по **центру ячейки** (обрезка краёв под линии LCD), полярность по углам + откат при разном верхнем ряду, авто-**инверсия** при >68% «занято» и ≥3 углах тоже «занято» (`VisionGridHeuristics.kt`). |
+| 2026-04-19 | CV: после вырезки ROI с маппингом превью — поворот яркости на 90° по часовой (`FramePreprocessor.rotateGrayscale90Clockwise`), чтобы сетка совпадала с ориентацией тетриса на экране. |
+| 2026-04-19 | Камера: ROI превью → буфер `ImageAnalysis` — `PreviewToBufferRoiMapper` (FIT_CENTER + `rotationDegrees`), размер `PreviewView` в анализ; исправление «весь кадр» и перепутанных сторон. |
 | 2026-04-19 | Камера: ROI без слайдеров — перетаскивание углов (`RoiCornerDragOverlay.kt`), превью на всю ширину блока; зелёный/оранжевый прямоугольники + маркеры. |
 | 2026-04-19 | Фаза 2: два ROI (`DualRoiSettings` + DataStore), `DualPlayfieldAnalyzer` (10×20 + 4×4), оверлей зелёный/оранжевый, `RecognizedDualGridsRow` — визуализация сеток в реальном времени (`RoiSettingsStore`, `PlayfieldAnalyzer`, `RecognizedGridVisualization.kt`). |
 | 2026-04-19 | Камера: защита от утечки bind — флаг после dispose, проверки перед `bindToLifecycle`, `clearAnalyzer` + `unbindAll`, `shutdownNow` исполнителя анализа (`CameraCaptureScreen`). |

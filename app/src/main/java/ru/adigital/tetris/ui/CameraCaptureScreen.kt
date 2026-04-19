@@ -14,7 +14,6 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview as CameraXPreview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,6 +62,7 @@ import ru.adigital.tetris.settings.saveDualRoiSettings
 import ru.adigital.tetris.ui.theme.TetrisTheme
 import ru.adigital.tetris.vision.DualPlayfieldAnalyzer
 import ru.adigital.tetris.vision.DualPlayfieldSnapshots
+import ru.adigital.tetris.vision.PreviewToBufferRoiMapper
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -274,21 +274,6 @@ private fun CameraPreviewWithRoiLayout(
     }
 }
 
-/**
- * Размеры кадра анализа в координатах, совпадающих с тем, как буфер показывается в портретном UI
- * (учёт [androidx.camera.core.ImageInfo.rotationDegrees]).
- */
-private fun displayOrientedAnalysisSize(
-    bufferWidth: Int,
-    bufferHeight: Int,
-    rotationDegrees: Int,
-): Pair<Int, Int> =
-    if (rotationDegrees == 90 || rotationDegrees == 270) {
-        bufferHeight to bufferWidth
-    } else {
-        bufferWidth to bufferHeight
-    }
-
 @Suppress("DEPRECATION")
 private fun Context.displayRotationCompat(): Int =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -326,6 +311,7 @@ private fun CameraPreview(
     /** Упакованные width<<32|height; -1 = ещё не было кадра. */
     val lastAnalysisPacked = remember { AtomicLong(-1L) }
     val onAnalysisBufferSizeState = rememberUpdatedState(onAnalysisBufferSize)
+    val previewViewSizePx = remember { AtomicReference<Pair<Int, Int>?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         cameraReleased.set(false)
@@ -351,6 +337,13 @@ private fun CameraPreview(
                 )
                 scaleType = PreviewView.ScaleType.FIT_CENTER
                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+                    val nw = right - left
+                    val nh = bottom - top
+                    if (nw > 0 && nh > 0) {
+                        previewViewSizePx.set(nw to nh)
+                    }
+                }
                 post {
                     val appContext = ctx.applicationContext
                     val mainExecutor = ContextCompat.getMainExecutor(appContext)
@@ -380,7 +373,7 @@ private fun CameraPreview(
                                 val w = image.width
                                 val h = image.height
                                 val rot = image.imageInfo.rotationDegrees
-                                val (dw, dh) = displayOrientedAnalysisSize(w, h, rot)
+                                val (dw, dh) = PreviewToBufferRoiMapper.displayOrientedBufferSize(w, h, rot)
                                 if (dw > 0 && dh > 0) {
                                     val packed = (dw.toLong() shl 32) or (dh.toLong() and 0xffff_ffffL)
                                     if (lastAnalysisPacked.get() != packed) {
@@ -391,10 +384,13 @@ private fun CameraPreview(
                                         }
                                     }
                                 }
+                                val (vw, vh) = previewViewSizePx.get() ?: (0 to 0)
                                 val dual = DualPlayfieldAnalyzer.analyze(
                                     image,
                                     dualRoiState.value.playfield,
                                     dualRoiState.value.nextPiece,
+                                    viewWidthPx = vw,
+                                    viewHeightPx = vh,
                                 )
                                 fpsAcc.frames++
                                 val now = System.nanoTime()

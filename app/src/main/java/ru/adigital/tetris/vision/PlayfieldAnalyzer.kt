@@ -35,9 +35,16 @@ internal fun buildSnapshotFromOpenImage(
     roi: NormalizedRoi,
     columns: Int,
     rows: Int,
+    viewWidthPx: Int = 0,
+    viewHeightPx: Int = 0,
 ): PlayfieldSnapshot {
     val ts = image.imageInfo.timestamp
-    val frame = FramePreprocessor.extractGrayscaleRoi(image, roi)
+    val frame = FramePreprocessor.extractGrayscaleRoi(
+        image,
+        roi,
+        viewWidthPx = viewWidthPx,
+        viewHeightPx = viewHeightPx,
+    )
         ?: return PlayfieldSnapshot.unknownGrid(columns, rows, timestampNanos = ts)
     val means = runCatching { VisionGridHeuristics.cellMeans(frame, columns, rows) }.getOrElse {
         return PlayfieldSnapshot.unknownGrid(columns, rows, timestampNanos = ts)
@@ -60,10 +67,26 @@ object DualPlayfieldAnalyzer {
         image: ImageProxy,
         playfieldRoi: NormalizedRoi,
         nextPieceRoi: NormalizedRoi,
+        viewWidthPx: Int = 0,
+        viewHeightPx: Int = 0,
     ): DualPlayfieldSnapshots {
         try {
-            val playfield = buildSnapshotFromOpenImage(image, playfieldRoi, columns = 10, rows = 20)
-            val nextPiece = buildSnapshotFromOpenImage(image, nextPieceRoi, columns = 4, rows = 4)
+            val playfield = buildSnapshotFromOpenImage(
+                image,
+                playfieldRoi,
+                columns = 10,
+                rows = 20,
+                viewWidthPx = viewWidthPx,
+                viewHeightPx = viewHeightPx,
+            )
+            val nextPiece = buildSnapshotFromOpenImage(
+                image,
+                nextPieceRoi,
+                columns = 4,
+                rows = 4,
+                viewWidthPx = viewWidthPx,
+                viewHeightPx = viewHeightPx,
+            )
             return DualPlayfieldSnapshots(playfield = playfield, nextPiece = nextPiece)
         } finally {
             image.close()

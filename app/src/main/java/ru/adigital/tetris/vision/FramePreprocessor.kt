@@ -1,6 +1,7 @@
 package ru.adigital.tetris.vision
 
 import android.graphics.ImageFormat
+import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 
 /**
@@ -29,29 +30,31 @@ object FramePreprocessor {
             "${"%.2f".format(roi.right)},${"%.2f".format(roi.bottom)}]"
 
     /**
-     * Плоскость Y из [ImageFormat.YUV_420_888]: обрезка по [roi] в координатах буфера кадра.
-     * Закрытие [image] — ответственность вызывающего.
+     * Плоскость Y из [ImageFormat.YUV_420_888]: обрезка по [roi].
+     * @param viewWidthPx/viewHeightPx размер [PreviewView] в пикселях; если ≤ 0 — старое поведение (ROI × размер буфера).
      */
-    fun extractGrayscaleRoi(image: ImageProxy, roi: NormalizedRoi): GrayscaleRoiFrame? {
+    fun extractGrayscaleRoi(
+        image: ImageProxy,
+        roi: NormalizedRoi,
+        viewWidthPx: Int = 0,
+        viewHeightPx: Int = 0,
+    ): GrayscaleRoiFrame? {
         if (image.format != ImageFormat.YUV_420_888) return null
         val plane = image.planes.getOrNull(0) ?: return null
         val buf = plane.buffer.duplicate()
         val rowStride = plane.rowStride
         val pixelStride = plane.pixelStride
 
-        val imgW = image.width
-        val imgH = image.height
-        val crop = image.cropRect
-
-        var left = (roi.left * imgW).toInt()
-        var top = (roi.top * imgH).toInt()
-        var right = (roi.right * imgW).toInt().coerceAtLeast(left + 1)
-        var bottom = (roi.bottom * imgH).toInt().coerceAtLeast(top + 1)
-
-        left = left.coerceIn(crop.left, crop.right - 1)
-        top = top.coerceIn(crop.top, crop.bottom - 1)
-        right = right.coerceIn(left + 1, crop.right)
-        bottom = bottom.coerceIn(top + 1, crop.bottom)
+        val rect: Rect = PreviewToBufferRoiMapper.bufferCropRectForViewRoi(
+            image = image,
+            roi = roi,
+            viewWidthPx = viewWidthPx,
+            viewHeightPx = viewHeightPx,
+        )
+        val left = rect.left
+        val top = rect.top
+        val right = rect.right
+        val bottom = rect.bottom
 
         val outW = right - left
         val outH = bottom - top
@@ -65,11 +68,43 @@ object FramePreprocessor {
             }
         }
 
-        return GrayscaleRoiFrame(
+        var frame = GrayscaleRoiFrame(
             width = outW,
             height = outH,
             luminance = out,
             timestampNanos = image.imageInfo.timestamp,
+        )
+        // Буфер сенсора vs ось «как на превью»: после корректного ROI строки/столбцы яркости
+        // соответствуют картинке, повёрнутой на 90° против часовой — выравниваем на 90° по часовой.
+        if (viewWidthPx > 0 && viewHeightPx > 0) {
+            frame = rotateGrayscale90Clockwise(frame)
+        }
+        return frame
+    }
+
+    /**
+     * Поворот изображения яркости на 90° по часовой стрелке (новые размеры height×width).
+     */
+    internal fun rotateGrayscale90Clockwise(source: GrayscaleRoiFrame): GrayscaleRoiFrame {
+        val w = source.width
+        val h = source.height
+        val src = source.luminance
+        val newW = h
+        val newH = w
+        val dst = ByteArray(newW * newH)
+        for (y in 0 until h) {
+            val row = y * w
+            for (x in 0 until w) {
+                val nx = h - 1 - y
+                val ny = x
+                dst[ny * newW + nx] = src[row + x]
+            }
+        }
+        return GrayscaleRoiFrame(
+            width = newW,
+            height = newH,
+            luminance = dst,
+            timestampNanos = source.timestampNanos,
         )
     }
 }
