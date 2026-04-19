@@ -263,6 +263,12 @@ private fun CameraPreviewWithRoiLayout(
                             .clip(RectangleShape),
                     ) {
                         preview()
+                        RoiAlignedRecognitionOverlay(
+                            dualRoi = dualRoi,
+                            playfield = dualSnapshots?.playfield,
+                            nextPiece = dualSnapshots?.nextPiece,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                         RoiCornerDragOverlay(
                             dualRoi = dualRoi,
                             onDualRoiChange = onDualRoiChange,
@@ -272,14 +278,10 @@ private fun CameraPreviewWithRoiLayout(
                 }
             }
         }
-        RecognizedCvRecognitionPanel(
-            playfield = dualSnapshots?.playfield,
-            nextPiece = dualSnapshots?.nextPiece,
+        CvOtsuThresholdBiasControls(
             otsuThresholdBias = otsuThresholdBias,
             onOtsuThresholdBiasChange = onOtsuThresholdBiasChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxWidth(),
         )
         Column(
             modifier = Modifier.fillMaxWidth(),

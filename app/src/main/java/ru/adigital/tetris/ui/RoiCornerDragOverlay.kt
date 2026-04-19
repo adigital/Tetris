@@ -67,7 +67,7 @@ fun RoiCornerDragOverlay(
             drawRoiWithHandles(
                 roi = dualRoi.playfield,
                 strokeColor = PlayfieldColor,
-                fillAlpha = 0.10f,
+                fillAlpha = 0f,
                 handlePx = handlePx,
                 widthPx = w,
                 heightPx = h,
@@ -75,7 +75,7 @@ fun RoiCornerDragOverlay(
             drawRoiWithHandles(
                 roi = dualRoi.nextPiece,
                 strokeColor = NextRoiColor,
-                fillAlpha = 0.12f,
+                fillAlpha = 0f,
                 handlePx = handlePx,
                 widthPx = w,
                 heightPx = h,
