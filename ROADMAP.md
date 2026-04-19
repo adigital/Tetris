@@ -29,6 +29,7 @@
 
 | Дата | Изменение |
 |------|-----------|
+| 2026-04-19 | Фаза 2 (старт): CameraX превью + `ImageAnalysis`, ROI (слайдеры, оверлей, `rememberSaveable`), заглушка `StubPlayfieldAnalyzer`, модели `NormalizedRoi` / `PlayfieldSnapshot`, вкладка «Камера» в `MainActivity`, `CameraCaptureScreen.kt`, разрешение `CAMERA`. |
 | 2026-04-19 | Step3: четыре серва GPIO 13/12/14/27, команды `0x02`..`0x05`; скетч `Arduino/TetrisBLE_Step3_FourServos/`, Android: `BleTetrisConfig`, четыре кнопки тапа в `MainActivity`. |
 | 2026-04-19 | BLE Step1 (подключение + мигание), Android: скан, GATT, кнопка мигания. Step2: команда `0x02`, серво GPIO 13, `writeCommand` / «Тап сервой». |
 
@@ -57,10 +58,10 @@
 
 ## Фаза 2 — Захват и понимание картинки с камеры
 
-- [ ] Захват превью/кадра (CameraX или аналог), стабильный ROI области экрана тетриса
-- [ ] Предобработка (обрезка, масштаб, бинаризация при необходимости)
+- [x] Захват превью/кадра (CameraX или аналог), стабильный ROI области экрана тетриса
+- [ ] Предобработка (обрезка, масштаб, бинаризация при необходимости) — задел: `FramePreprocessor`, без конвертации YUV
 - [ ] Распознавание сетки/фигур или упрощённый конвейер под конкретную модель тетриса
-- [ ] Выход в код: структура «игровое состояние» (матрица, текущая фигура, следующая — по мере необходимости)
+- [x] Выход в код: структура «игровое состояние» (матрица, текущая фигура, следующая — по мере необходимости) — `PlayfieldSnapshot` / `CellKind`, пока заглушка анализатора
 
 ---
 
@@ -86,6 +87,8 @@
 |---------|------|
 | BLE-клиент | `app/src/main/java/ru/adigital/tetris/ble/BleTetrisClient.kt` |
 | UI подключения / тестов | `app/src/main/java/ru/adigital/tetris/MainActivity.kt` |
+| Камера, ROI (Фаза 2) | `app/src/main/java/ru/adigital/tetris/ui/CameraCaptureScreen.kt` |
+| Модели поля / CV | `app/src/main/java/ru/adigital/tetris/vision/` |
 | Прошивка минимум (LED) | `Arduino/TetrisBLE_Step1_Connect/` |
 | Прошивка LED + один серво | `Arduino/TetrisBLE_Step2_OneServo/` |
 | Прошивка LED + четыре серва (тапы) | `Arduino/TetrisBLE_Step3_FourServos/` |

@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,6 +39,7 @@ import ru.adigital.tetris.ble.BleTetrisClient
 import ru.adigital.tetris.ble.BleTetrisConfig
 import ru.adigital.tetris.ble.bleConnectPermissions
 import ru.adigital.tetris.ble.hasBleConnectPermissions
+import ru.adigital.tetris.ui.CameraCaptureScreen
 import ru.adigital.tetris.ui.theme.TetrisTheme
 
 private fun tapQueuedMessage(activity: ComponentActivity, ok: Boolean): String =
@@ -48,14 +52,47 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TetrisTheme {
-                BleConnectScreen()
+                var tab by remember { mutableIntStateOf(0) }
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = tab == 0,
+                                onClick = { tab = 0 },
+                                icon = { Text(stringResource(R.string.tab_ble_short)) },
+                                label = { Text(stringResource(R.string.tab_ble)) },
+                            )
+                            NavigationBarItem(
+                                selected = tab == 1,
+                                onClick = { tab = 1 },
+                                icon = { Text(stringResource(R.string.tab_camera_short)) },
+                                label = { Text(stringResource(R.string.tab_camera)) },
+                            )
+                        }
+                    },
+                ) { innerPadding ->
+                    if (tab == 0) {
+                        BleConnectScreen(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                        )
+                    } else {
+                        CameraCaptureScreen(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun BleConnectScreen() {
+private fun BleConnectScreen(modifier: Modifier = Modifier) {
     val activity = LocalContext.current as ComponentActivity
     val client = remember { BleTetrisClient(activity.applicationContext) }
 
@@ -104,7 +141,7 @@ private fun BleConnectScreen() {
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    Column(modifier = modifier.fillMaxSize()) {
         BleConnectContent(
             busy = busy,
             bleSessionReady = bleSessionReady,
@@ -143,7 +180,6 @@ private fun BleConnectScreen() {
             },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .padding(24.dp),
         )
     }

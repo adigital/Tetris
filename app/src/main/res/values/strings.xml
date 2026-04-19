@@ -17,4 +17,19 @@
     <string name="tap_rotate">Поворот</string>
     <string name="tap_down">Вниз</string>
     <string name="ble_tap_queued">Команда «тап» отправлена</string>
+    <string name="tab_ble">Контроллер</string>
+    <string name="tab_ble_short">BLE</string>
+    <string name="tab_camera">Камера</string>
+    <string name="tab_camera_short">CV</string>
+    <string name="camera_phase2_hint">Фаза 2: превью камеры и область (ROI) для будущего распознавания поля.</string>
+    <string name="camera_permission_hint">Нужен доступ к камере, чтобы показать превью и настроить ROI.</string>
+    <string name="camera_grant_permission">Разрешить камеру</string>
+    <string name="camera_permission_denied">Камера не разрешена — превью недоступно.</string>
+    <string name="camera_roi_title">Область кадра (ROI)</string>
+    <string name="camera_slider_left">Лево</string>
+    <string name="camera_slider_top">Верх</string>
+    <string name="camera_slider_right">Право</string>
+    <string name="camera_slider_bottom">Низ</string>
+    <string name="camera_analysis_stub">Анализ (заглушка), частота: %1$s</string>
+    <string name="camera_snapshot_summary">Снимок: %1$d×%2$d, уверенность=%3$.2f</string>
 </resources>
