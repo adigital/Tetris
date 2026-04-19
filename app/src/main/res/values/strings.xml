@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Tetris</string>
+    <string name="connect_ble">Подключиться</string>
+    <string name="ble_bt_disabled">Включите Bluetooth</string>
+    <string name="ble_permissions_denied">Нужны разрешения для Bluetooth</string>
+    <string name="ble_scanning">Поиск контроллера…</string>
+    <string name="ble_timeout">Контроллер не найден за отведённое время</string>
+    <string name="ble_no_adapter">Bluetooth недоступен на этом устройстве</string>
+    <string name="ble_connected">Контроллер подключён</string>
+    <string name="ble_service_missing">Сервис на устройстве не найден</string>
+    <string name="ble_discover_failed">Ошибка обнаружения сервисов BLE</string>
+    <string name="blink_led">Мигнуть</string>
+    <string name="ble_blink_queued">Команда «мигнуть» отправлена</string>
+    <string name="ble_blink_no_connection">Сначала подключитесь к контроллеру</string>
+</resources>
