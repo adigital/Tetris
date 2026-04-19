@@ -17,10 +17,10 @@ object VisionGridHeuristics {
     @VisibleForTesting
     fun trimFractionForCellSpan(minCellSpanPx: Int): Float =
         when {
-            minCellSpanPx <= 5 -> 0.06f
-            minCellSpanPx <= 10 -> 0.12f
-            minCellSpanPx <= 18 -> 0.18f
-            else -> 0.24f
+            minCellSpanPx <= VisionTuning.CELL_TRIM_SPAN_THRESHOLD_1 -> VisionTuning.CELL_TRIM_MIN_SPAN_PX_LE5
+            minCellSpanPx <= VisionTuning.CELL_TRIM_SPAN_THRESHOLD_2 -> VisionTuning.CELL_TRIM_MIN_SPAN_PX_LE10
+            minCellSpanPx <= VisionTuning.CELL_TRIM_SPAN_THRESHOLD_3 -> VisionTuning.CELL_TRIM_MIN_SPAN_PX_LE18
+            else -> VisionTuning.CELL_TRIM_MIN_SPAN_PX_DEFAULT
         }
 
     /**
@@ -85,12 +85,12 @@ object VisionGridHeuristics {
         if (means.isEmpty()) {
             return List(columns * rows) { CellKind.Unknown } to 0f
         }
-        if (columns * rows <= 25) {
+        if (columns * rows <= VisionTuning.SMALL_GRID_MAX_CELLS) {
             return classifySmallGridByBorderRef(means, columns, rows)
         }
         val samples = IntArray(means.size) { i -> means[i].roundToInt().coerceIn(0, 255) }
         val threshold = otsuThreshold(samples) ?: return List(columns * rows) { CellKind.Unknown } to 0f
-        val boundary = threshold.toFloat() + 0.5f
+        val boundary = threshold.toFloat() + VisionTuning.OTSU_BOUNDARY_BIAS
 
         val below = means.filter { it < boundary }
         val above = means.filter { it >= boundary }
@@ -101,8 +101,9 @@ object VisionGridHeuristics {
         val meanBelow = below.average().toFloat()
         val meanAbove = above.average().toFloat()
         val spread = abs(meanAbove - meanBelow)
-        if (spread < 6f) {
-            return List(columns * rows) { CellKind.Unknown } to (spread / 6f).coerceIn(0f, 1f)
+        if (spread < VisionTuning.OTSU_MIN_SPREAD) {
+            return List(columns * rows) { CellKind.Unknown } to
+                (spread / VisionTuning.OTSU_MIN_SPREAD).coerceIn(0f, 1f)
         }
 
         val filledIsDarker = filledIsDarkerFromCorners(
@@ -121,11 +122,58 @@ object VisionGridHeuristics {
         ) {
             cells = invertFilledEmpty(cells)
         }
-        if (columns * rows >= 50) {
-            cells = removeLoneFilledSpeckles(cells, columns, rows)
+        if (columns * rows >= VisionTuning.LARGE_GRID_MIN_CELLS) {
+            val mut = removeLoneFilledSpeckles(cells, columns, rows).toMutableList()
+            stripFalseHudTopRowLargeGrid(mut, means, columns, rows)
+            cells = mut
         }
-        val confidence = (spread / 48f).coerceIn(0.15f, 1f)
+        val confidence = (spread / VisionTuning.CONFIDENCE_SPREAD_DIVISOR).coerceIn(
+            VisionTuning.CONFIDENCE_MIN,
+            VisionTuning.CONFIDENCE_MAX,
+        )
         return cells to confidence
+    }
+
+    /**
+     * Стакан 10×20: если **вся верхняя строка** «занята», а по яркости она как **ряды 1–3** (HUD/рамка),
+     * сбрасываем верхнюю строку. Нижнюю не трогаем — там может быть реальный штабель.
+     */
+    internal fun stripFalseHudTopRowLargeGrid(
+        cells: MutableList<CellKind>,
+        means: FloatArray,
+        columns: Int,
+        rows: Int,
+    ) {
+        if (columns * rows < VisionTuning.LARGE_GRID_MIN_CELLS || rows < VisionTuning.HUD_MIN_ROWS) return
+        if (!(0 until columns).all { cells[it] == CellKind.Filled }) return
+
+        val totalFilled = cells.count { it == CellKind.Filled }
+        // Только одна верхняя линия «занята» — почти всегда ложный HUD/рамка, не фигура
+        if (totalFilled <= columns) {
+            for (c in 0 until columns) {
+                cells[c] = CellKind.Empty
+            }
+            return
+        }
+
+        val topMean = (0 until columns).map { means[it] }.average().toFloat()
+        val interior = ArrayList<Float>(columns * 3)
+        for (ry in 1..VisionTuning.HUD_REFERENCE_ROW_COUNT) {
+            for (cx in 0 until columns) {
+                interior.add(means[ry * columns + cx])
+            }
+        }
+        val sorted = interior.sorted()
+        val ref = (sorted[sorted.size / 2] + sorted[(sorted.size - 1) / 2]) / 2f
+        val mn = means.minOrNull()!!
+        val mx = means.maxOrNull()!!
+        val span = (mx - mn).coerceAtLeast(1f)
+        val tol = (VisionTuning.HUD_TOP_VS_INTERIOR_TOL_FRAC * span).coerceAtLeast(VisionTuning.HUD_TOP_VS_INTERIOR_TOL_MIN)
+        if (abs(topMean - ref) < tol) {
+            for (c in 0 until columns) {
+                cells[c] = CellKind.Empty
+            }
+        }
     }
 
     private fun invertFilledEmpty(cells: List<CellKind>): List<CellKind> =
@@ -155,10 +203,14 @@ object VisionGridHeuristics {
         val mn = means.minOrNull()!!
         val mx = means.maxOrNull()!!
         val span = mx - mn
-        if (span < 11f) {
-            return List(means.size) { CellKind.Unknown } to (span / 11f).coerceIn(0.05f, 0.9f)
+        if (span < VisionTuning.SMALL_GRID_MIN_SPAN) {
+            return List(means.size) { CellKind.Unknown } to
+                (span / VisionTuning.SMALL_GRID_MIN_SPAN).coerceIn(
+                    VisionTuning.SMALL_GRID_LOW_CONFIDENCE_FLOOR,
+                    VisionTuning.SMALL_GRID_LOW_CONFIDENCE_CAP,
+                )
         }
-        val k = 0.10f * span + 5f
+        val k = VisionTuning.SMALL_GRID_BORDER_K_FRAC * span + VisionTuning.SMALL_GRID_BORDER_K_ADD
 
         fun buildDarkBlocks(): List<CellKind> = means.map { m ->
             if (emptyRef - m > k) CellKind.Filled else CellKind.Empty
@@ -178,25 +230,29 @@ object VisionGridHeuristics {
         }
 
         val cells = when {
-            cd in 1..10 && cl in 1..10 ->
+            cd in VisionTuning.SMALL_GRID_FILLED_COUNT_MIN..VisionTuning.SMALL_GRID_FILLED_COUNT_MAX &&
+                cl in VisionTuning.SMALL_GRID_FILLED_COUNT_MIN..VisionTuning.SMALL_GRID_FILLED_COUNT_MAX ->
                 if (cornersFilled(dark) <= cornersFilled(light)) dark else light
-            cd in 1..10 -> dark
-            cl in 1..10 -> light
+            cd in VisionTuning.SMALL_GRID_FILLED_COUNT_MIN..VisionTuning.SMALL_GRID_FILLED_COUNT_MAX -> dark
+            cl in VisionTuning.SMALL_GRID_FILLED_COUNT_MIN..VisionTuning.SMALL_GRID_FILLED_COUNT_MAX -> light
             cd == 0 && cl == 0 -> List(means.size) { CellKind.Unknown }
             else -> if (cd <= cl) dark else light
         }
         if (cells.all { it == CellKind.Unknown }) {
-            return cells to 0.12f
+            return cells to VisionTuning.SMALL_GRID_UNKNOWN_CONFIDENCE
         }
         var outMut = cells.toMutableList()
         val ratio = outMut.count { it == CellKind.Filled }.toFloat() / means.size
-        if (ratio > 0.72f) {
+        if (ratio > VisionTuning.SMALL_GRID_INVERT_IF_FILLED_RATIO) {
             outMut = invertFilledEmpty(outMut).toMutableList()
         }
-        if (columns == 4 && rows == 4) {
+        if (columns == VisionTuning.NEXT_PREVIEW_GRID_SIZE && rows == VisionTuning.NEXT_PREVIEW_GRID_SIZE) {
             stripFalseBezelEdgeLineOnSmallGrid(outMut, means, columns, rows, emptyRef, span)
         }
-        val confidence = (span / 42f).coerceIn(0.12f, 1f)
+        val confidence = (span / VisionTuning.SMALL_GRID_CONFIDENCE_DIVISOR).coerceIn(
+            VisionTuning.SMALL_GRID_CONFIDENCE_MIN,
+            VisionTuning.CONFIDENCE_MAX,
+        )
         return outMut to confidence
     }
 
@@ -211,8 +267,8 @@ object VisionGridHeuristics {
         emptyRef: Float,
         span: Float,
     ) {
-        if (columns != 4 || rows != 4) return
-        val tol = (0.28f * span).coerceAtLeast(6f)
+        if (columns != VisionTuning.NEXT_PREVIEW_GRID_SIZE || rows != VisionTuning.NEXT_PREVIEW_GRID_SIZE) return
+        val tol = (VisionTuning.BEZEL_4X4_TOL_FRAC * span).coerceAtLeast(VisionTuning.BEZEL_4X4_TOL_MIN)
 
         fun colFilled(c: Int) = (0 until rows).all { cells[it * columns + c] == CellKind.Filled }
         fun colMean(c: Int) = (0 until rows).map { means[it * columns + c] }.average().toFloat()
@@ -301,11 +357,13 @@ object VisionGridHeuristics {
         meanBelow: Float,
         meanAbove: Float,
     ): Boolean {
-        if (columns >= 4 && rows >= 4) {
+        if (columns >= VisionTuning.MIN_GRID_DIM_FOR_TOP_ROW_CORNER_POLARITY &&
+            rows >= VisionTuning.MIN_GRID_DIM_FOR_TOP_ROW_CORNER_POLARITY
+        ) {
             val topL = means[0]
             val topR = means[columns - 1]
             // Верхние углы сильно разные (фигура цепляет верх) — не выводим «пустоту» по углам
-            if (abs(topL - topR) > 70f) {
+            if (abs(topL - topR) > VisionTuning.TOP_ROW_CORNER_LUMA_DIFF_FOR_FALLBACK) {
                 return meanBelow < meanAbove
             }
         }
@@ -313,7 +371,7 @@ object VisionGridHeuristics {
         val cm = idx.map { means[it] }.sorted()
         val cornerMed = (cm[1] + cm[2]) / 2f
         val spreadCorners = cm[3] - cm[0]
-        if (spreadCorners > 55f) {
+        if (spreadCorners > VisionTuning.CORNER_LUMA_SPREAD_FOR_FALLBACK) {
             return meanBelow < meanAbove
         }
         val distBelow = abs(meanBelow - cornerMed)
@@ -338,11 +396,16 @@ object VisionGridHeuristics {
         val ratio = filled.toFloat() / total
         val corners = cornerCellIndices(columns, rows)
         val cornersFilled = corners.count { cells[it] == CellKind.Filled }
-        val largeWell = total >= 50
-        val ratioThreshold = if (largeWell) 0.68f else 0.82f
-        val typeA = ratio > ratioThreshold && cornersFilled >= 3
+        val largeWell = total >= VisionTuning.LARGE_GRID_MIN_CELLS
+        val ratioThreshold = if (largeWell) {
+            VisionTuning.INVERT_LARGE_RATIO_TYPE_A
+        } else {
+            VisionTuning.INVERT_SMALL_RATIO_TYPE_A
+        }
+        val typeA = ratio > ratioThreshold && cornersFilled >= VisionTuning.INVERT_TYPE_A_MIN_CORNERS_FILLED
         // Почти всё «занято», углов мало «занятых» — часто 1–2 угла ошибочно Filled при заливе
-        val typeB = largeWell && ratio > 0.82f && cornersFilled <= 2
+        val typeB = largeWell && ratio > VisionTuning.INVERT_TYPE_B_RATIO &&
+            cornersFilled <= VisionTuning.INVERT_TYPE_B_MAX_CORNERS_FILLED
         return typeA || typeB
     }
 
@@ -357,15 +420,15 @@ object VisionGridHeuristics {
         columns: Int,
         rows: Int,
     ): Boolean {
-        if (columns * rows < 50) return false
+        if (columns * rows < VisionTuning.LARGE_GRID_MIN_CELLS) return false
         val ratio = cells.count { it == CellKind.Filled }.toFloat() / cells.size
-        if (ratio < 0.62f) return false
+        if (ratio < VisionTuning.INVERT_BRIGHT_CORNERS_MIN_FILLED_RATIO) return false
         val ci = cornerCellIndices(columns, rows)
         val cornerMean = ci.map { means[it] }.average().toFloat()
         val mn = means.minOrNull()!!
         val mx = means.maxOrNull()!!
         val span = (mx - mn).coerceAtLeast(1f)
-        return (cornerMean - mn) / span >= 0.34f
+        return (cornerMean - mn) / span >= VisionTuning.INVERT_BRIGHT_CORNERS_MIN_NORMALIZED
     }
 
     /**

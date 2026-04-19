@@ -89,6 +89,45 @@ class VisionGridHeuristicsTest {
     }
 
     @Test
+    fun stripHud_clearsFullTopRowWhenBrightnessMatchesRowsBelow() {
+        val columns = 10
+        val rows = 20
+        val cells = MutableList(200) { CellKind.Empty }
+        for (c in 0 until columns) {
+            cells[c] = CellKind.Filled
+        }
+        val means = FloatArray(200) { 130f }
+        for (c in 0 until columns) {
+            means[c] = 128f
+        }
+        VisionGridHeuristics.stripFalseHudTopRowLargeGrid(cells, means, columns, rows)
+        for (c in 0 until columns) {
+            assertEquals(CellKind.Empty, cells[c])
+        }
+    }
+
+    @Test
+    fun stripHud_clearsTopRowWhenItIsTheOnlyFilledCells_evenIfBrightnessDiffers() {
+        val columns = 10
+        val rows = 20
+        val cells = MutableList(200) { CellKind.Empty }
+        for (c in 0 until columns) {
+            cells[c] = CellKind.Filled
+        }
+        val means = FloatArray(200) { 100f }
+        for (c in 0 until columns) {
+            means[c] = 40f
+        }
+        for (idx in 10 until 40) {
+            means[idx] = 200f
+        }
+        VisionGridHeuristics.stripFalseHudTopRowLargeGrid(cells, means, columns, rows)
+        for (c in 0 until columns) {
+            assertEquals(CellKind.Empty, cells[c])
+        }
+    }
+
+    @Test
     fun stripBezel_clearsFullEdgeColumnWhenBrightnessMatchesBackground() {
         val cells = MutableList(16) { CellKind.Empty }
         for (r in 0 until 4) {
